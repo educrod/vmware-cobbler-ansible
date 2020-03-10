@@ -1,0 +1,75 @@
+- name: Deploy Linux VM
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars_files:
+    - vars/vcenter.vault
+  tasks:
+  - name: create new VM
+    vmware_guest:
+      hostname: "{{ vault_hostname }}"
+      username: "{{ vault_username }}"
+      password: "{{ vault_password }}"
+      validate_certs: False
+      name: "{{ vm_name }}"
+      datacenter: "{{ datacenter_name }}"
+      folder: "{{ folder_name }}/vm/"
+      state: poweredoff
+      guest_id: centos64Guest
+      cluster: "{{ cluster_name }}"
+      disk:
+      - size_gb: 100
+        type: thin
+        datastore: VMFS
+        autoselect_datastore: True
+      hardware:
+        memory_mb: 2048
+        num_cpus: 4
+        scsi: paravirtual
+      networks:
+      - name: REDE LAB
+        device_type: vmxnet3
+    delegate_to: localhost
+    register: deploy_vm
+
+  - name: get mac address
+    vmware_guest_network:
+      hostname: "{{ vault_hostname }}"
+      username: "{{ vault_username }}"
+      password: "{{ vault_password }}"
+      datacenter: "{{ datacenter_name }}"
+      validate_certs: False
+      name: "{{ vm_name }}"
+      gather_network_info: yes
+    delegate_to: localhost
+    register: network_vm
+
+  - name: creating cobbler system
+    cobbler_system:
+      host: 1.2.3.4
+      username: cobbler
+      password: cobbler
+      name: "{{ vm_name }}"
+      validate_certs: no
+      properties:
+        hostname: "{{ vm_name }}"
+        dnsname: "{{ vm_name }}"
+        profile: "{{ profile }}"
+        name_servers: [ 2.3.4.5, 3.4.5.6 ]
+        name_servers_search: foo.com, bar.com
+      interfaces:
+        eth0:
+          macaddress: "{{ network_vm.network_data['0']['mac_addr'] }}"
+    delegate_to: localhost
+
+  - name: set the state of a virtual machine to poweron
+    vmware_guest_powerstate:
+      hostname: "{{ vault_hostname }}"
+      username: "{{ vault_username }}"
+      password: "{{ vault_password }}"
+      validate_certs: no
+      folder: "{{ folder_name }}/vm/"
+      name: "{{ vm_name }}"
+      state: powered-on
+    delegate_to: localhost
+    register: deploy
